@@ -14,7 +14,7 @@ flowchart TD
     D --> R["Local RSS / Atom agent"]
     D --> B["Official Bluesky feed agent"]
     D --> Y["Official YouTube channel feed agent"]
-    J --> Q{"All requested agents succeeded?"}
+    J --> Q{"All sources for this combined report succeeded?"}
     R --> Q
     B --> Q
     Y --> Q
@@ -25,6 +25,10 @@ flowchart TD
 ```
 
 Only agents selected by the plan run. Offline and live sources cannot be mixed in one run. Dispatch is sequential and bounded to five sources. No output is sent to any third party.
+
+## What needs to wait?
+
+**Only a combined report needs to wait for every source named in its plan.** A one-source plan runs only that collector. A failed multi-source run still returns source status, but no combined counts: a source that fails is missing, not zero. The current CLI returns those status receipts together at the end. See [three runnable examples](../examples/reporting.md) for a source-only report, a deduplicated combined report and a failed-source receipt.
 
 ## Callable agents
 

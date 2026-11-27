@@ -4,6 +4,7 @@ A read-only **orchestrator** for Humanitarians AI’s lexicon pilots. Give it a 
 
 ## Start here
 
+- [Three runnable reporting examples](examples/reporting.md): a single-source count, a combined count, and a missing-feed case.
 - [Agent workflow and Mermaid diagram](agents/README.md): triggers, collector calls, the review gate and failure paths.
 - [Workflow specification](docs/workflow-specification.md): inputs, outputs, limits and what is tested.
 - [Triggers](triggers/README.md): manual, optional offline timer, and test entry points.
