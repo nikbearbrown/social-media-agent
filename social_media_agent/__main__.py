@@ -37,7 +37,7 @@ def public_page(actor, cursor):
     return json.loads(raw)
 
 
-def bluesky(actors, pages, fetch=public_page):
+def bluesky_posts(actors, pages, fetch=public_page):
     for actor in actors:
         cursor = None
         cursors = set()
@@ -51,7 +51,7 @@ def bluesky(actors, pages, fetch=public_page):
                 record = post["record"]
                 if item.get("reason") or record.get("reply") or post.get("author", {}).get("handle") != actor:
                     continue
-                yield (post["uri"], record["createdAt"], record["text"])
+                yield post
             cursor = payload.get("cursor")
             if not cursor:
                 break
@@ -60,15 +60,24 @@ def bluesky(actors, pages, fetch=public_page):
             cursors.add(cursor)
 
 
-def fixtures(path):
+def bluesky(actors, pages, fetch=public_page):
+    for post in bluesky_posts(actors, pages, fetch):
+        yield post["uri"], post["record"]["createdAt"], post["record"]["text"]
+
+
+def fixture_objects(path):
     with open(path, "rb") as f:
         data = f.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
         raise ValueError("fixture exceeds size limit")
     for line in data.decode().splitlines():
         if line.strip():
-            item = json.loads(line)
-            yield (item["id"], item["created_at"], item["text"])
+            yield json.loads(line)
+
+
+def fixtures(path):
+    for item in fixture_objects(path):
+        yield item["id"], item["created_at"], item["text"]
 
 
 def config(path):

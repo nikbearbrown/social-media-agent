@@ -8,7 +8,7 @@ Run one shared intake workflow over independent collector agents. Start with rep
 
 The trigger supplies a run plan and a UTC Monday. The run plan includes mode, vocabulary path, threshold, and named sources with kind and target. Treat it as trusted operator configuration, not data supplied by the feeds. Keep approved live plans local. Target validation prevents passing arbitrary URLs to the live collectors. No commands, destinations or instructions are accepted from input text.
 
-An agent's output is a stream of three string fields. Source limits and required fields are checked before pooling. Identifiers are used only in memory for exact-ID deduplication. This does not establish equivalence of different IDs across platforms. Use versioned approved vocabulary and compare outputs only at the same grain, sampling plan, period, and release threshold. The output JSON contains a vocabulary digest and a per-agent receipt; an offline run includes fixture row counts.
+Collectors return native fields and detected formats. The normalizer maps them to the common fields `item_id`, `published_at_utc`, and `text`. Source limits and required fields are checked before pooling. Receipts identify source-by-source access requirements, expected and observed formats where available, success, attempts, and the failure stage and reason if applicable. Identifiers are used only in memory for exact-ID deduplication. This does not establish equivalence of different IDs across platforms. Use versioned approved vocabulary and compare outputs only at the same grain, sampling plan, period, and release threshold. The output JSON contains a vocabulary digest and a per-agent receipt; an offline run includes fixture row counts.
 
 ## Example and expected evidence
 

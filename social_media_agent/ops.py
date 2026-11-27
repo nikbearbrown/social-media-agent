@@ -22,22 +22,32 @@ MESSAGES = {
 }
 
 
-def slack(event):
+def slack(event, failures=None):
     url = os.environ.get("SOCIAL_MEDIA_AGENT_SLACK_WEBHOOK_URL", "")
     if not WEBHOOK.fullmatch(url):
         raise ValueError("Slack webhook missing or invalid")
-    req = Request(url, method="POST", data=json.dumps({"text": MESSAGES[event]}).encode(),
+    message = MESSAGES[event]
+    if event == "source-failed" and failures:
+        details = []
+        for index, row in enumerate(failures, 1):
+            if row["status"] == "failed":
+                kind, reason, attempts = row["agent"], row["reason"], row["attempts"]
+                if re.fullmatch(r"[a-z0-9-]{1,40}", kind) and re.fullmatch(r"[a-z0-9-]{1,40}", reason) and type(attempts) is int and 1 <= attempts <= 3:
+                    details.append(f"source-{index} ({kind}): {reason}, {attempts} attempt(s)")
+        if details:
+            message += " " + "; ".join(details) + "."
+    req = Request(url, method="POST", data=json.dumps({"text": message}).encode(),
                   headers={"Content-Type": "application/json"})
     with build_opener(NoRedirect()).open(req, timeout=5) as response:
         if response.status != 200 or response.read(16).strip() != b"ok":
             raise OSError("Slack rejected alert")
 
 
-def notify(event, enabled):
+def notify(event, enabled, failures=None):
     if not enabled:
         return False
     try:
-        slack(event)
+        slack(event, failures)
         return True
     except (OSError, ValueError):
         print("Operational Slack alert could not be delivered.", file=sys.stderr)

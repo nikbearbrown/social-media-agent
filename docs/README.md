@@ -6,3 +6,5 @@
 - [Workflow specification](workflow-specification.md)
 
 - [Operations alerts](operations.md)
+
+- [Claude Code prompt: design the analysis and visualizations](claude-analysis-prompt.md)

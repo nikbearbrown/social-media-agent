@@ -1,16 +1,21 @@
 """Trigger → policy → collector agents → normalization → aggregate review."""
 import argparse
+import errno
+import ssl
+from time import sleep
+from http.client import IncompleteRead, RemoteDisconnected
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 from itertools import islice
 import json
 from pathlib import Path
 import sys
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from xml.etree.ElementTree import ParseError
 
 from .__main__ import HANDLE, KEY, aggregate, config
-from .collectors import CHANNEL, collect
+from .collectors import CHANNEL, SOURCE_PROFILES, collect
+from .normalization import COMMON_SCHEMA, NormalizationError, to_common
 from .ops import notify, set_status
 
 LIVE = {"bluesky", "youtube"}
@@ -62,7 +67,75 @@ def read_plan(path, allow_live, week, now):
     return mode, floor, resolved, themes
 
 
-def run(path, week, trigger, allow_live=False, invoke=collect, now=None):
+def diagnose(exc):
+    if isinstance(exc, NormalizationError):
+        return exc.reason, None
+    if isinstance(exc, HTTPError):
+        code = exc.code
+        wait = exc.headers.get("Retry-After", "") if exc.headers else ""
+        exc.close()
+        if code == 429:
+            return "rate-limited", float(wait) if wait.isascii() and wait.isdigit() and len(wait) < 3 and 0 <= int(wait) <= 5 else None
+        if code in {401, 403}:
+            return "access-denied", None
+        if code in {408, 500, 502, 503, 504} and not wait:
+            return "upstream-http-" + str(code), 1
+        return "http-" + str(code), None
+    if isinstance(exc, FileNotFoundError):
+        return "file-not-found", None
+    if isinstance(exc, PermissionError):
+        return "file-access-denied", None
+    if isinstance(exc, ParseError):
+        return "invalid-xml", None
+    if isinstance(exc, json.JSONDecodeError):
+        return "invalid-json", None
+    if isinstance(exc, URLError):
+        if isinstance(exc.reason, ssl.SSLError):
+            return "tls-error", None
+        return "network-error", 1
+    if isinstance(exc, (ConnectionError, TimeoutError, IncompleteRead, RemoteDisconnected)):
+        return "network-error", 1
+    if isinstance(exc, OSError) and exc.errno in {errno.EINTR, errno.EAGAIN, errno.EBUSY}:
+        return "temporary-io-error", 1
+    if isinstance(exc, OSError):
+        return "io-error", None
+    return "invalid-source-record", None
+
+
+SOURCE_ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError, ParseError, OverflowError, IncompleteRead)
+
+
+def run_source(kind, target, invoke, pause):
+    profile, transport, auth, formats = SOURCE_PROFILES[kind]
+    base = {"agent": kind, "source_type": profile, "transport": transport,
+            "access": auth, "expected_formats": list(formats)}
+    history = []
+    for attempt in range(1, 4):
+        stage = "collect"
+        try:
+            raw = list(islice(invoke(kind, target), ROW_LIMIT + 1))
+            if len(raw) > ROW_LIMIT:
+                raise ValueError("source row cap")
+            stage = "normalize"
+            if any(x.format not in formats for x in raw):
+                raise ValueError("unexpected native format")
+            batch = [to_common(x).as_row() for x in raw]
+            detected = sorted({x.format for x in raw})
+            return batch, {**base, "status": "ok", "attempts": attempt,
+                           "detected_formats": detected, "previous_failures": history}
+        except SOURCE_ERRORS as exc:
+            reason, delay = diagnose(exc)
+            failure = {"stage": stage, "reason": reason}
+            if isinstance(exc, NormalizationError):
+                failure["field"] = exc.field_name
+            history.append(failure)
+            if stage != "collect" or delay is None or attempt == 3:
+                return None, {**base, "status": "failed", **failure,
+                              "attempts": attempt, "previous_failures": history[:-1]}
+            pause(max(delay, attempt))
+
+
+def run(path, week, trigger, allow_live=False, invoke=collect, now=None, pause=sleep):
     if week.weekday() != 0 or trigger not in {"manual", "timer", "ci"}:
         raise ValueError("invalid trigger or UTC week")
     mode, floor, sources, themes = read_plan(
@@ -75,21 +148,13 @@ def run(path, week, trigger, allow_live=False, invoke=collect, now=None):
     batches = []
     for i, (name, kind, target) in enumerate(sources, 1):
         label = name if mode == "offline" else f"source-{i}"
-        try:
-            batch = list(islice(invoke(kind, target), ROW_LIMIT + 1))
-            if len(batch) > ROW_LIMIT:
-                raise ValueError("source row cap")
-            # Validate every source before attempting the pooled summary.
-            aggregate(batch, {}, week, floor)
+        batch, receipt = run_source(kind, target, invoke, pause)
+        if batch is not None:
             batches.append(batch)
-            receipts.append({"source": label, "agent": kind, "status": "ok"})
-        except (HTTPError, OSError, ValueError, TypeError, KeyError, AttributeError, ParseError, OverflowError) as exc:
-            reason = f"http-{exc.code}" if isinstance(exc, HTTPError) else "read-or-validation-error"
-            if isinstance(exc, HTTPError):
-                exc.close()
-            receipts.append({"source": label, "agent": kind, "status": "failed", "reason": reason})
+        receipts.append({"source": label, **receipt})
     report = {"schema": "social-media-agent/run-v1", "trigger": trigger,
               "mode": mode, "week_utc": week.isoformat(), "min_count": floor,
+              "normalized_record_schema": COMMON_SCHEMA,
               "vocabulary_sha256": hash_, "sources": receipts}
     if any(r["status"] != "ok" for r in receipts):
         report.update(status="withheld", reason="one or more collector agents failed")
@@ -131,7 +196,7 @@ def main(argv=None):
     failed = report["status"] == "withheld"
     record("source-failed" if failed else "finished")
     if failed:
-        notify("source-failed", a.notify_slack)
+        notify("source-failed", a.notify_slack, report["sources"])
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if failed else 0
 

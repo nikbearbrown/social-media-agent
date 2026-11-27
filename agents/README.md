@@ -4,27 +4,24 @@ The orchestrator calls modules, not prompts. A coding agent can operate the work
 
 ```mermaid
 flowchart TD
-    M["Manual CLI"] --> O["Orchestrator: read sources, mode, vocabulary, count threshold"]
-    T["Local timer: offline only"] --> O
-    I["CI or test trigger: offline only"] --> O
-    O --> P{"Valid plan and approved mode?"}
-    P -- No --> E["Exit 2: dispatch nothing"]
-    P -- Yes --> D["Dispatch named collector agents"]
-    D --> J["JSONL export agent"]
-    D --> R["Local RSS / Atom agent"]
-    D --> B["Official Bluesky feed agent"]
-    D --> Y["Official YouTube channel feed agent"]
-    J --> Q{"All sources for this combined report succeeded?"}
-    R --> Q
-    B --> Q
-    Y --> Q
-    Q -- No --> F["Withhold report and return sanitized receipts"]
-    E -. "Slack if enabled" .-> A["Operations alert with no source data"]
-    F -. "Slack if enabled" .-> A
-    W["Separate watchdog checks heartbeat"] -- Missing or overdue --> A
-    Q -- Yes --> N["Filter UTC week and deduplicate exact IDs"]
-    N --> V["Match versioned vocabulary and suppress small counts"]
-    V --> H["Return aggregate and coverage caveats for human review"]
+    M["Manual CLI / offline timer / tests"] --> O["Read run plan: named sources, vocabulary, reporting rules"]
+    O --> V{"Plan valid and mode approved?"}
+    V -- No --> E["Stop before collection; alert if enabled"]
+    V -- Yes --> P["For each source: get access requirements and expected format"]
+    P --> C["Fetch and parse the source in its native format"]
+    C --> N["Map native fields to item ID, UTC published time, and text"]
+    C -- Temporary failure --> T["Retry only this source, up to two more times"]
+    T --> C
+    C -- Permanent failure or retries exhausted --> R["Record failed source, stage, reason and attempts"]
+    N -- Invalid record --> R
+    N -- Valid --> S["Record successful source and keep normalized records"]
+    R --> A["Report which sources failed; alert if Slack enabled"]
+    R --> H["Withhold the combined result if a named source is missing"]
+    S --> D["Combine normalized records when planned coverage is complete"]
+    D --> W["Filter to UTC week and deduplicate matching IDs"]
+    W --> K["Match vocabulary; suppress small counts"]
+    K --> F["Return aggregate and source receipts for human review"]
+    G["Independent watchdog"] -- Missing or overdue heartbeat --> A
 ```
 
 Only agents selected by the plan run. Offline and live sources cannot be mixed in one run. Dispatch is sequential and bounded to five sources. No source data or reports are sent to any third party. Optional Slack notifications contain only fixed operational messages.
@@ -33,20 +30,20 @@ Only agents selected by the plan run. Offline and live sources cannot be mixed i
 
 **Only a combined report needs to wait for every source named in its plan.** A one-source plan runs only that collector. A failed multi-source run still returns source status, but no combined counts: a source that fails is missing, not zero. The current CLI returns those status receipts together at the end. See [three runnable examples](../examples/reporting.md) for a source-only report, a deduplicated combined report and a failed-source receipt.
 
-## Callable agents
+## Source profiles and collector adapters
 
-| Agent | What it receives | What it reads | What it returns to the orchestrator |
+| Agent | What it receives | What it reads | Fields used from the native record |
 | --- | --- | --- | --- |
-| JSONL export | Local path | Fixture or approved normalized export; offline | Identifier, timezone-aware publication timestamp, text |
-| RSS/Atom file | Local path | Fixture or approved XML snapshot; offline; title only | Identifier, publication timestamp, title |
-| Bluesky publisher | Approved organizational handle | One official author-feed page; excludes replies, reposts and off-publisher posts | Post identifier, timestamp, text |
-| YouTube channel feed | Approved organizational channel ID | One official Atom feed request; validates channel; no playback, comments or transcript | Video identifier, publication timestamp, title |
+| JSONL export | Local path | Fixture or approved normalized export; offline | `id`, `created_at`, `text` |
+| RSS/Atom file | Local path | Fixture or approved XML snapshot; offline; title only | RSS: `guid`, `pubDate`, `title`; Atom: `id`, `published`, `title` |
+| Bluesky publisher | Approved organizational handle | One official author-feed page; excludes replies, reposts and off-publisher posts | `uri`, `record.createdAt`, `record.text` |
+| YouTube channel feed | Approved organizational channel ID | One official Atom feed request; validates channel; no playback, comments or transcript | `videoId`, `published`, `title` |
 
 All rows stay in process memory for the run. The release candidate omits raw rows, source identifiers and per-source counts in live mode. The human reviewer compares the aggregate with the approved vocabulary, checks limitations and decides whether to release or revise; the agent does not publish.
 
 ## Handoff and failure
 
-An invalid plan yields exit 2 and calls no agents. A failed source yields exit 1, sanitized status receipts, and no aggregate. There is no fallback to alternative hosts or browser scraping. An aggregate candidate yields exit 0 and status `review-required`; that status is not a claim of approval or completeness. Do not use a report for disease case counts or treatment decisions.
+An invalid plan yields exit 2 and calls no agents. Temporary collection errors retry only the affected source, at most twice. Permanent or exhausted errors produce a source receipt with failure stage, reason, and attempts. A failed source yields exit 1 and no combined aggregate. There is no fallback to alternative hosts or browser scraping. An aggregate candidate yields exit 0 and status `review-required`; that status is not a claim of approval or completeness. Do not use a report for disease case counts or treatment decisions.
 
 See [specification](../docs/workflow-specification.md) and [trigger entry points](../triggers/README.md).
 
@@ -102,3 +99,12 @@ python3 -m social_media_agent.orchestrator \
 ```
 
 The orchestrator calls `jsonl` with `examples/fictional-posts.jsonl` and `rss-file` with `examples/fictional-feed.xml`. Both responses pass validation; after deduplication, the report contains four distinct items. Remove the second object and only the JSONL collector runs. For a live plan, change the mode to `live`, use a threshold of at least 5, replace the offline entries with approved publisher handles or channel IDs, and keep that plan in a local file such as `sources.local.json`. Do not pass the confirmation flag until those sources and their intended use have been approved. Live collection is not deployed.
+
+
+## Field conversion happens before combination
+
+The source is the actual file, publisher, or channel named by the operator. RSS, Atom and JSONL are formats the adapter reads, not the identity of the source. The source profile states the transport, access requirement, and expected format. For a saved XML feed the collector checks the root element to distinguish RSS from Atom. A receipt shows the formats observed in returned records; an empty list on a successful run means there were no returned records to describe, not that the source failed.
+
+The separate normalizer converts each native record to three fields: **`item_id`, `published_at_utc`, `text`**. A JSONL export's `id` and an RSS item's `guid` both become `item_id`; their differently formatted timestamps become an ISO 8601 UTC time; a publisher title becomes `text` so it can be analyzed alongside post text. The adapter's format-specific fields aren't treated as columns in the combined record. YouTube video IDs are prefixed with `yt:video:`. Exact-ID deduplication is not cross-platform near-duplicate detection; if two imported files use unrelated ID namespaces, normalize their IDs at export so unrelated items cannot collide.
+
+For example, JSONL `created_at: 2026-11-26T12:00:00Z` and RSS `pubDate: Thu, 26 Nov 2026 08:00:00 -0400` both map to `published_at_utc: 2026-11-26T12:00:00+00:00`. An RSS item without `pubDate` fails at `normalize` with `missing-field` and safe field name `pubDate`; it is not retried. A temporary HTTP 503 without a Retry-After header is tried up to three times total. A rate limit is retried only if the server explicitly offers a numeric wait of five seconds or less. Slack, if enabled, receives only source position, adapter type, reason code and attempt count, not row contents, URLs or credentials.

@@ -49,7 +49,10 @@ class OpsTests(unittest.TestCase):
                 n.reset_mock()
                 self.assertEqual(orchestrator.main([*common,"--plan","examples/failed-source-demo.json"]), 1)
                 self.assertEqual(json.loads(p.read_text())["state"], "source-failed")
-                n.assert_called_once_with("source-failed", True)
+                n.assert_called_once()
+                event, enabled, receipts = n.call_args.args
+                self.assertEqual((event, enabled), ("source-failed", True))
+                self.assertEqual(receipts[1]["reason"], "file-not-found")
 
     def test_notify_builds_fixed_payload_without_exposing_secret(self):
         with patch.dict("os.environ", {"SOCIAL_MEDIA_AGENT_SLACK_WEBHOOK_URL":
@@ -60,6 +63,18 @@ class OpsTests(unittest.TestCase):
             req = b.return_value.open.call_args.args[0]
             self.assertEqual(json.loads(req.data), {"text": ops.MESSAGES["source-failed"]})
             self.assertNotIn(b"Secret", req.data)
+
+    def test_slack_reports_failed_source_without_target(self):
+        with patch.dict("os.environ", {"SOCIAL_MEDIA_AGENT_SLACK_WEBHOOK_URL":
+                                       "https://hooks.slack.com/services/A/B/Secret"}), patch.object(ops, "build_opener") as b:
+            response = b.return_value.open.return_value.__enter__.return_value
+            response.status, response.read.return_value = 200, b"ok"
+            rows = [{"status":"ok"}, {"status":"failed", "agent":"youtube",
+                    "reason":"network-error", "attempts":3, "source":"private handle"}]
+            self.assertTrue(ops.notify("source-failed", True, rows))
+            payload = json.loads(b.return_value.open.call_args.args[0].data)["text"]
+            self.assertIn("source-2 (youtube): network-error, 3 attempt(s)", payload)
+            self.assertNotIn("private", payload)
 
     def test_rejects_other_hosts_without_network(self):
         with patch.dict("os.environ", {"SOCIAL_MEDIA_AGENT_SLACK_WEBHOOK_URL":
