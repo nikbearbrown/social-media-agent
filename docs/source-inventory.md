@@ -24,3 +24,16 @@ Queried the local Gitskills metadata snapshot (2026-08-18; 282,200 repository ro
 - [last30days](https://github.com/mvanhorn/last30days-skill) and [SocialClaw](https://github.com/ndesv21/socialclaw): adjacent discovery/orchestration candidates from the BearBrown audit catalog, not wired into the MVP.
 
 No third-party skill, scraped data, credentials, or workflow was copied or installed. Catalog links preserve provenance. The new skill and role instructions distill useful patterns using a deterministic collector and an independent human review step.
+
+## Orchestrator follow-up
+
+The second pass screened 66 collection-related title candidates across the 1,877-entry agent catalog, including false matches such as publishers or video editing workflows. In addition to the sources above, these node graphs were inspected in the local catalog:
+
+| Workflow | Useful design choice | Decision |
+| --- | --- | --- |
+| [Hey Siri, Ask Agent](https://www.bearbrown.co/agents/hey-siri-ask-agent-workflow) | Explicit trigger and separate response node | Split triggers from dispatch and output; no webhook or hosted model port in this version. |
+| [Hacker News AI Tracker](https://www.bearbrown.co/agents/n8n/hacker-news-ai-tracker) | Scheduled/manual trigger, calls a separate feed workflow, merges results | Strongest orchestration precedent; use named collector calls and one gated merge. |
+| [Read two RSS feeds](https://www.bearbrown.co/agents/n8n/read-rss-feed-from-two-different-sources) | Iterate independent feed inputs | Implemented a local RSS/Atom agent. |
+| [Only new RSS](https://www.bearbrown.co/agents/n8n/get-only-new-rss-with-photo) | Scheduled intake and duplicate filtering | Deduplicate exact IDs inside a bounded run; don't fetch or store images. |
+| [YouTube searcher](https://www.bearbrown.co/agents/n8n/youtube-searcher) | Explicit invocation and separate record selection | Implemented a narrower [official channel feed](https://developers.google.com/youtube/data/guides/push_notifications) agent, no database or full search. |
+| Reddit, X and Facebook workflows above | Separate platform acquisition from processing | Diagnostic references only; approval and adapter tests required before use. |

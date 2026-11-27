@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Fictional public education feed</title>
+    <link>https://example.org/</link>
+    <description>Invented source for workflow testing</description>
+    <item>
+      <guid isPermaLink="false">example-3</guid>
+      <title>Fictional reminder: see the health bulletin for new public information.</title>
+      <pubDate>Thu, 26 Nov 2026 12:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <guid isPermaLink="false">example-4</guid>
+      <title>Fictional guide to community support resources</title>
+      <pubDate>Fri, 27 Nov 2026 12:00:00 +0000</pubDate>
+    </item>
+  </channel>
+</rss>

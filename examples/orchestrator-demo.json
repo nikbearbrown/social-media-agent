@@ -1,0 +1,9 @@
+{
+  "mode": "offline",
+  "vocabulary": "fictional-themes.json",
+  "min_count": 1,
+  "sources": [
+    {"name": "example-social-export", "kind": "jsonl", "target": "fictional-posts.jsonl"},
+    {"name": "example-publisher-feed", "kind": "rss-file", "target": "fictional-feed.xml"}
+  ]
+}

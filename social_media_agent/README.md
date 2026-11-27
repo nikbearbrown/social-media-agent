@@ -10,3 +10,5 @@ python3 -m social_media_agent --config settings.local.json \
 ```
 
 Supply a completed UTC week starting Monday. This is a bounded sample of recent pages, not retrieval of a complete historical week. Omit the report when source coverage is unsuitable; absence of a bucket may mean suppression, no matches, or posts outside the sample. Stop on access denial, quota limits, or malformed responses. Never switch to browser scraping to work around an API refusal.
+
+For the shared multi-source path, use the [orchestrator](../docs/workflow-specification.md). This page describes the original single-source CLI.
