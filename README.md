@@ -7,6 +7,7 @@ A read-only **orchestrator** for Humanitarians AI’s lexicon pilots. Give it a 
 - [Three runnable reporting examples](examples/reporting.md): a single-source count, a combined count, and a missing-feed case.
 - [Agent workflow and Mermaid diagram](agents/README.md): triggers, collector calls, the review gate and failure paths.
 - [Workflow specification](docs/workflow-specification.md): inputs, outputs, limits and what is tested.
+- [Operational alerts and missed-run watchdog](docs/operations.md): opt-in Slack and local status files.
 - [Triggers](triggers/README.md): manual, optional offline timer, and test entry points.
 - [Source inventory](docs/source-inventory.md): BearBrown.co and Hetzner candidates, and what we reused.
 - [Grant pilots](docs/grant-pilots.md): separate applications of the workflow for I3-03, I3-04 and I3-08.

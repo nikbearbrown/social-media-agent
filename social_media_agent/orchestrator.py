@@ -11,6 +11,7 @@ from xml.etree.ElementTree import ParseError
 
 from .__main__ import HANDLE, KEY, aggregate, config
 from .collectors import CHANNEL, collect
+from .ops import notify, set_status
 
 LIVE = {"bluesky", "youtube"}
 OFFLINE = {"jsonl", "rss-file"}
@@ -107,14 +108,32 @@ def main(argv=None):
     ap.add_argument("--week", type=date.fromisoformat, required=True)
     ap.add_argument("--trigger", choices=["manual", "timer", "ci"], default="manual")
     ap.add_argument("--confirm-approved-sources", action="store_true")
+    ap.add_argument("--status-file", type=Path, help="Local heartbeat file; parent directory must exist")
+    ap.add_argument("--notify-slack", action="store_true", help="Send fixed operational alerts using an environment webhook")
     a = ap.parse_args(argv)
+
+    def record(state):
+        if a.status_file is not None:
+            try:
+                set_status(a.status_file, state)
+            except OSError:
+                print("Could not write the run status file.", file=sys.stderr)
+                notify("status-write-failed", a.notify_slack)
+
+    record("running")
     try:
         report = run(a.plan, a.week, a.trigger, a.confirm_approved_sources)
     except (ValueError, OSError, TypeError, KeyError, AttributeError, OverflowError):
+        record("invalid-plan")
+        notify("invalid-plan", a.notify_slack)
         print("Plan invalid or not authorized; no collectors dispatched.", file=sys.stderr)
         return 2
+    failed = report["status"] == "withheld"
+    record("source-failed" if failed else "finished")
+    if failed:
+        notify("source-failed", a.notify_slack)
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 1 if report["status"] == "withheld" else 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

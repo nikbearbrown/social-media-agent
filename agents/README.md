@@ -19,12 +19,15 @@ flowchart TD
     B --> Q
     Y --> Q
     Q -- No --> F["Withhold report and return sanitized receipts"]
+    E -. "Slack if enabled" .-> A["Operations alert with no source data"]
+    F -. "Slack if enabled" .-> A
+    W["Separate watchdog checks heartbeat"] -- Missing or overdue --> A
     Q -- Yes --> N["Filter UTC week and deduplicate exact IDs"]
     N --> V["Match versioned vocabulary and suppress small counts"]
     V --> H["Return aggregate and coverage caveats for human review"]
 ```
 
-Only agents selected by the plan run. Offline and live sources cannot be mixed in one run. Dispatch is sequential and bounded to five sources. No output is sent to any third party.
+Only agents selected by the plan run. Offline and live sources cannot be mixed in one run. Dispatch is sequential and bounded to five sources. No source data or reports are sent to any third party. Optional Slack notifications contain only fixed operational messages.
 
 ## What needs to wait?
 
@@ -46,6 +49,10 @@ All rows stay in process memory for the run. The release candidate omits raw row
 An invalid plan yields exit 2 and calls no agents. A failed source yields exit 1, sanitized status receipts, and no aggregate. There is no fallback to alternative hosts or browser scraping. An aggregate candidate yields exit 0 and status `review-required`; that status is not a claim of approval or completeness. Do not use a report for disease case counts or treatment decisions.
 
 See [specification](../docs/workflow-specification.md) and [trigger entry points](../triggers/README.md).
+
+## Operations alerts
+
+An invalid plan or a failed collector can alert an operator in Slack. An [independent watchdog](../docs/operations.md) is what detects a run that never starts or gets stuck. Both are opt-in.
 
 ## Exactly what “load run plan” does
 

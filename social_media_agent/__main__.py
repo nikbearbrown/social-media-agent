@@ -148,6 +148,7 @@ def main(argv=None):
         counts, n, dup = aggregate(bluesky(actors, a.pages) if a.bluesky else fixtures(a.fixture),
                                    themes, a.week, a.min_count)
     except HTTPError as e:
+        e.close()
         print(f"source returned HTTP {e.code}; no output, no retries", file=sys.stderr)
         return 1
     except (ValueError, OSError, TypeError, KeyError, AttributeError):
