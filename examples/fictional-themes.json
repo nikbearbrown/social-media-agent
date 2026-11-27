@@ -1,0 +1,8 @@
+{
+  "publishers": [],
+  "themes": {
+    "care-access-language": ["care access", "clinic hours"],
+    "public-information-language": ["public information", "health bulletin"],
+    "support-resource-language": ["support resources", "community support"]
+  }
+}
